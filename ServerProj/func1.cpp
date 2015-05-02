@@ -9,7 +9,7 @@ using namespace std;
 
 LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) ;
 
-int main()
+int main1()
 {
 	
 	HCURSOR hCurs1;
@@ -45,11 +45,6 @@ int main()
 	}
 	while(1);
 
-	
-
-
-	std::cout << "2+2 = ";
-	std::cout << 2+2;
 	return 0;
 	
 }
