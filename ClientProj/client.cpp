@@ -9,7 +9,7 @@ using namespace std;
 #pragma comment(lib, "Ws2_32.lib")
 
 #define DEFAULT_PORT "27015"
-#define IP_SERVER "192.168.43.16"
+#define IP_SERVER "192.168.0.100"
 
 void StringToCursorPos(char* recvbuf);
 
@@ -100,6 +100,8 @@ int main()
 
 void StringToCursorPos(char* recvbuf)
 {
+	int mouseAction = 0;
+	HWND hwnd;
 	POINT pt;
 	pt.x = 0;
 	pt.y = 0;
@@ -111,10 +113,32 @@ void StringToCursorPos(char* recvbuf)
 		pt.x += recvbuf[i++] - '0';
 	}
 	i++;
-	while(recvbuf[i] != '\0')
+	while(recvbuf[i] != '_')
 	{
 		pt.y *= 10;
 		pt.y += recvbuf[i++] - '0';
 	}
+	i++;
+	while(recvbuf[i] != '\0')
+	{
+		mouseAction *= 10;
+		mouseAction += recvbuf[i++] - '0';
+	}
 	SetCursorPos(pt.x, pt.y);
+
+	
+	hwnd = WindowFromPoint(pt);
+	switch(mouseAction)
+	{
+	case WM_MOUSEMOVE:
+		break;
+	case WM_LBUTTONDOWN:
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTDOWN, pt.x, pt.y, 0, 0); // нажали
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTUP, pt.x, pt.y, 0, 0); //отпустили
+		break;
+	case WM_RBUTTONDOWN:
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTDOWN, pt.x, pt.y, 0, 0); // нажали
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0); //отпустили
+		break;
+	}
 }
