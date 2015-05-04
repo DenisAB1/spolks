@@ -9,7 +9,7 @@ using namespace std;
 #pragma comment(lib, "Ws2_32.lib")
 
 #define DEFAULT_PORT "27015"
-#define IP_SERVER "192.168.0.101"
+#define IP_SERVER "192.168.0.100"
 
 int main() 
 {
@@ -22,7 +22,7 @@ int main()
 	iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
 	if (iResult != 0) 
 	{
-		printf("WSAStartup failed: %d\n", iResult);
+		cout << "WSAStartup failed: " << iResult << endl;
 		return 0;
 	}
 
@@ -34,7 +34,7 @@ int main()
 	iResult = getaddrinfo(IP_SERVER, DEFAULT_PORT, &hints, &result);
 	if (iResult != 0) 
 	{
-		printf("Getaddrinfo failed: %d\n", iResult);
+		cout << "Getaddrinfo failed: " << iResult << endl;
 		WSACleanup();
 		return 0;
 	}
@@ -45,7 +45,7 @@ int main()
 	ConnectSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
 	if (ConnectSocket == INVALID_SOCKET) 
 	{
-		printf("Error at socket(): %ld\n", WSAGetLastError());
+		cout << "Error at socket(): " << WSAGetLastError() << endl;
 		freeaddrinfo(result);
 		WSACleanup();
 		return 0;
@@ -62,11 +62,31 @@ int main()
 
 	if (ConnectSocket == INVALID_SOCKET) 
 	{
-		printf("Unable to connect to server!\n");
+		cout << "Unable to connect to server!" << endl;
 		WSACleanup();
 		return 0;
 	}
 
+	cout << "Connection to server was succesful." << endl;
+
+	char recvbuf[128];							//
+	int iSendResult;
+	int recvbuflen = 128;						//
+
+	do 
+	{
+		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
+		if (iResult > 0)
+		{
+			cout << "Bytes received: " << iResult << endl;
+			cout << recvbuf;
+		}
+		else if (iResult == 0)
+			cout << "Connection closed." << endl;
+		else
+			cout << "Recv failed: " << WSAGetLastError() << endl;
+	} 
+	while (iResult > 0);
 	//freeaddrinfo(result);
 	//WSACleanup();
 	cout << "end of all";

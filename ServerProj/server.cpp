@@ -72,11 +72,34 @@ int main()
 	ClientSocket = accept(ListenSocket, NULL, NULL);	// ждем подключение к серверу
 	if (ClientSocket == INVALID_SOCKET) 
 	{
-		printf("accept failed: %d\n", WSAGetLastError());
+		cout << "accept failed: " << WSAGetLastError() << endl;
 		closesocket(ListenSocket);
 		WSACleanup();
 		return 0;
 	}
+
+	cout << "Client has connected." << endl;
+
+	char sendbuf[128];							//
+	int iSendResult;
+	int sendbuflen = 128;						//
+
+	do 
+	{
+		cin >> sendbuf;
+		sendbuflen = strlen(sendbuf);
+		iSendResult = send(ClientSocket, sendbuf, sendbuflen, 0);
+		if (iSendResult == SOCKET_ERROR) 
+		{
+			cout << "Send failed: " << WSAGetLastError() << endl;
+			closesocket(ClientSocket);
+			WSACleanup();
+			return 0;
+		}
+		printf("Bytes sent: %d\n", iSendResult);
+
+	} 
+	while (sendbuf[0] != 'q');
 
 	freeaddrinfo(result);
     closesocket(ListenSocket);
