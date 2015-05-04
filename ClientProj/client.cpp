@@ -9,7 +9,9 @@ using namespace std;
 #pragma comment(lib, "Ws2_32.lib")
 
 #define DEFAULT_PORT "27015"
-#define IP_SERVER "192.168.0.100"
+#define IP_SERVER "192.168.43.16"
+
+void StringToCursorPos(char* recvbuf);
 
 int main() 
 {
@@ -78,13 +80,15 @@ int main()
 		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
 		if (iResult > 0)
 		{
-			cout << "Bytes received: " << iResult << endl;
-			cout << recvbuf;
+			//cout << "Bytes received: " << iResult << endl;
+			StringToCursorPos(recvbuf);		//переводит в точку и устанавливает курсор
+			//cout << recvbuf;
 		}
 		else if (iResult == 0)
 			cout << "Connection closed." << endl;
 		else
 			cout << "Recv failed: " << WSAGetLastError() << endl;
+	
 	} 
 	while (iResult > 0);
 	//freeaddrinfo(result);
@@ -92,4 +96,25 @@ int main()
 	cout << "end of all";
 	_getch();
 	return 0;
+}
+
+void StringToCursorPos(char* recvbuf)
+{
+	POINT pt;
+	pt.x = 0;
+	pt.y = 0;
+
+	int i = 0;
+	while(recvbuf[i] != '_')
+	{
+		pt.x *= 10;
+		pt.x += recvbuf[i++] - '0';
+	}
+	i++;
+	while(recvbuf[i] != '\0')
+	{
+		pt.y *= 10;
+		pt.y += recvbuf[i++] - '0';
+	}
+	SetCursorPos(pt.x, pt.y);
 }

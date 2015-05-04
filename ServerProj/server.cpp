@@ -10,6 +10,7 @@ using namespace std;
 
 #define DEFAULT_PORT "27015"
 
+void CursorPosToString(char* sendbuf);
 
 int main() 
 {
@@ -81,14 +82,19 @@ int main()
 	cout << "Client has connected." << endl;
 
 	char sendbuf[128];							//
+	char xPos[5];
+	char yPos[5];
 	int iSendResult;
 	int sendbuflen = 128;						//
+	POINT pt;
 
 	do 
 	{
-		cin >> sendbuf;
+		CursorPosToString(sendbuf);
+	
 		sendbuflen = strlen(sendbuf);
-		iSendResult = send(ClientSocket, sendbuf, sendbuflen, 0);
+		sendbuf[sendbuflen] = '\0';
+		iSendResult = send(ClientSocket, sendbuf, sendbuflen+1, 0);
 		if (iSendResult == SOCKET_ERROR) 
 		{
 			cout << "Send failed: " << WSAGetLastError() << endl;
@@ -96,8 +102,8 @@ int main()
 			WSACleanup();
 			return 0;
 		}
-		printf("Bytes sent: %d\n", iSendResult);
-
+		//printf("Bytes sent: %d\n", iSendResult);
+		Sleep(10);
 	} 
 	while (sendbuf[0] != 'q');
 
@@ -107,4 +113,18 @@ int main()
 	cout << "end of all";
 	_getch();
 	return 0;
+}
+
+void CursorPosToString(char* sendbuf)
+{
+	POINT pt;
+	char xPos[5];
+	char yPos[5];
+	GetCursorPos(&pt);
+	sendbuf[0] = '\0';
+	itoa(pt.x, xPos, 10);
+	itoa(pt.y, yPos, 10);
+	strcat(sendbuf, xPos);
+	strcat(sendbuf, "_");
+	strcat(sendbuf, yPos);
 }
