@@ -4,14 +4,17 @@
 #include <conio.h>
 #include <stdio.h>
 
+#include "ScreenShotFunction.h"
+
 using namespace std;
 
 #pragma comment(lib, "Ws2_32.lib")
 
 #define DEFAULT_PORT "27015"
-#define IP_SERVER "192.168.0.100"
+#define IP_SERVER "192.168.0.101"
 
 void StringToCursorPos(char* recvbuf);
+DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters);
 
 int main() 
 {
@@ -75,6 +78,11 @@ int main()
 	int iSendResult;
 	int recvbuflen = 128;						//
 
+	HANDLE hThread;
+	DWORD IDThread;
+
+	hThread = CreateThread(NULL, NULL, ThreadSendImageFunction, (void*)ConnectSocket, 0, &IDThread);
+
 	do 
 	{
 		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
@@ -93,6 +101,7 @@ int main()
 	while (iResult > 0);
 	//freeaddrinfo(result);
 	//WSACleanup();
+	TerminateThread(hThread, NO_ERROR);
 	cout << "end of all";
 	_getch();
 	return 0;
@@ -141,4 +150,73 @@ void StringToCursorPos(char* recvbuf)
 		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0); //отпустили
 		break;
 	}
+}
+
+DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters)
+{
+	//передадим серверу разрешение экрана
+	int iSendResult = 0;
+
+	int cxScreen = GetSystemMetrics (SM_CXSCREEN);
+    int cyScreen = GetSystemMetrics (SM_CYSCREEN);
+	char bufScreen[9] = {'\0'};
+	sprintf(bufScreen, "%d_%d", cxScreen, cyScreen);
+
+	iSendResult = send((SOCKET)lpParameters, bufScreen, strlen(bufScreen), 0);
+	if (iSendResult == SOCKET_ERROR)
+		{
+			cout << "Send failed: " << WSAGetLastError() << endl;
+			closesocket((SOCKET)lpParameters);
+			WSACleanup();
+			return 0;
+		}
+	do 
+	{
+		//lpParameters contain  ConnectSocket
+		
+		char* bufferForImage = NULL;
+		char* bufferForSize = NULL;
+		unsigned int sizeOfFile = 0;
+		unsigned int numberOfbytes = 0;
+
+		GetScreenShot();
+
+		FILE *fImage = fopen("TempImage.jpeg","rb");
+
+		fseek (fImage , 0 , SEEK_END);
+		sizeOfFile = ftell (fImage);
+		rewind (fImage);
+
+		bufferForSize = new char[10];
+		itoa(sizeOfFile, bufferForSize, 10);
+
+		iSendResult = send((SOCKET)lpParameters, bufferForSize, strlen(bufferForSize), 0); 
+		//Sleep(10);
+
+		bufferForImage = new char[sizeOfFile];  
+		//передача сначала размера изображения, потом самого изображения
+
+
+		
+
+		numberOfbytes = fread(bufferForImage, 1, sizeOfFile, fImage);
+
+		iSendResult = send((SOCKET)lpParameters, bufferForImage, sizeOfFile, 0);
+
+		cout << "send: " << iSendResult << endl;
+		if (iSendResult == SOCKET_ERROR)
+		{
+			cout << "Send failed: " << WSAGetLastError() << endl;
+			closesocket((SOCKET)lpParameters);
+			WSACleanup();
+			return 0;
+		}
+		free(bufferForImage);
+		free(bufferForSize);
+		fclose(fImage);
+
+		Sleep(200);
+
+	} 
+	while (1);
 }

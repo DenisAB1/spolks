@@ -3,11 +3,17 @@
 #include <iostream>
 #include <conio.h>
 #include <stdio.h>
+#include <fstream>
+#include <olectl.h>
+
+#include "ConvertJpegToBmp.h"
 
 using namespace std;
 
 HHOOK hHook;
 SOCKET ClientSocket;		//переделать на локальное объ€вление
+int ResolutionScreenX = 0;
+int ResolutionScreenY = 0;
 
 #pragma comment(lib, "Ws2_32.lib")
 
@@ -15,28 +21,14 @@ SOCKET ClientSocket;		//переделать на локальное объ€вление
 
 void CursorPosToString(char* sendbuf, int mouseButton);
 void SendToClient(int mouseButton);
-//LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+
+DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters);
 
 int main() 
 {
-
-	
-	/*int choice = 1;
-	do
-	{
-		cout << "Input 1: ";
-		HWND hwnd;
-		POINT pt;
-		cin >> choice;
-		GetCursorPos(&pt);
-		hwnd = WindowFromPoint(pt);
-		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTDOWN, pt.x, pt.y, 0, 0); // нажали
-		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTUP, pt.x, pt.y, 0, 0); //отпустили
-	}
-	while(choice);*/
-
 	WSADATA wsaData;
 	struct addrinfo *result = NULL, *ptr = NULL, hints;
 	int iResult;
@@ -104,44 +96,21 @@ int main()
 
 	cout << "Client has connected." << endl;
 
-	//char sendbuf[128];							//
-	//char xPos[5];
-	//char yPos[5];
-	//int iSendResult;
-	//int sendbuflen = 128;						//
+	HANDLE hThread;
+	DWORD IDThread;
+	hThread = CreateThread(NULL, NULL, ThreadRecvImageFunction, (void*)ClientSocket, 0, &IDThread);
+	
 	POINT pt;
-
 	
 	hHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, GetModuleHandle(NULL), 0);
 	MSG msg = { 0 };
 
 	while(GetMessage(&msg, NULL, 0, 0));
 
-//	Sleep(11);
-	//do 
-	//{
-
-
-		/*CursorPosToString(sendbuf);
-	
-		sendbuflen = strlen(sendbuf);
-		sendbuf[sendbuflen] = '\0';*/
-		/*iSendResult = send(ClientSocket, sendbuf, sendbuflen+1, 0);
-		if (iSendResult == SOCKET_ERROR) 
-		{
-			cout << "Send failed: " << WSAGetLastError() << endl;
-			closesocket(ClientSocket);
-			WSACleanup();
-			return 0;
-		}*/
-		//printf("Bytes sent: %d\n", iSendResult);
-		
-	//} 
-	//while (sendbuf[0] != 'q');
-
 	freeaddrinfo(result);
     closesocket(ListenSocket);
     WSACleanup();
+	TerminateThread(hThread, NO_ERROR);
 	cout << "end of all";
 	_getch();
 	return 0;
@@ -169,18 +138,18 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
     DWORD dwKCode = ((KBDLLHOOKSTRUCT*)lParam)->vkCode;
 	switch(wParam)
 	{
-	case WM_LBUTTONDOWN:
-		cout << "Left button clicked!" << endl;
-		SendToClient(WM_LBUTTONDOWN);
-		break;
-	case WM_RBUTTONDOWN:
-		cout << "Right button clicked!" << endl;
-		SendToClient(WM_RBUTTONDOWN);
-		break;
 	case WM_MOUSEMOVE:
 		//cout << "Mouse is moving!" << endl;
 		SendToClient(WM_MOUSEMOVE);
 		Sleep(5);
+		break;
+	case WM_LBUTTONDOWN:
+		//cout << "Left button clicked!" << endl;
+		SendToClient(WM_LBUTTONDOWN);
+		break;
+	case WM_RBUTTONDOWN:
+		//cout << "Right button clicked!" << endl;
+		SendToClient(WM_RBUTTONDOWN);
 		break;
 	}
  
@@ -196,7 +165,7 @@ void SendToClient(int mouseButton)
 	sendbuflen = strlen(sendbuf);
 	sendbuf[sendbuflen] = '\0';
 	iSendResult = send(ClientSocket, sendbuf, sendbuflen+1, 0);
-	if (iSendResult == SOCKET_ERROR) 
+	if (iSendResult == SOCKET_ERROR)
 	{
 		cout << "Send failed: " << WSAGetLastError() << endl;
 		closesocket(ClientSocket);
@@ -205,6 +174,7 @@ void SendToClient(int mouseButton)
 	}
 	Sleep(15);
 }
+
 /*WM_MOUSEMOVE = 0x200,
 WM_LBUTTONDOWN = 0x201,
 WM_LBUTTONUP = 0x202,
@@ -220,3 +190,176 @@ WM_XBUTTONDOWN = 0x20B,
 WM_XBUTTONUP = 0x20C,
 WM_XBUTTONDBLCLK = 0x20D,
 WM_MOUSEHWHEEL = 0x20E*/
+
+
+DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
+{
+
+
+	wchar_t szClassName[ ] = L"WindowClass";
+
+	//принимаем разрешение экрана
+	int iResult = 0;
+	char bufferForScr[9] = {'\0'};
+	iResult = recv(ClientSocket, bufferForScr, 9, 0);
+	if (iResult == 0)
+		cout << "Connection closed." << endl;
+	if (iResult < 0)
+		cout << "Recv failed: " << WSAGetLastError() << endl;
+
+	//переводим строку в числа
+	int i = 0;
+	while(bufferForScr[i] != '_')
+	{
+		ResolutionScreenX *= 10;
+		ResolutionScreenX += bufferForScr[i++] - '0';
+	}
+	i++;
+	while(bufferForScr[i] != '\0')
+	{
+		ResolutionScreenY *= 10;
+		ResolutionScreenY += bufferForScr[i++] - '0';
+	}
+
+	//открываем новое окно нужного размера
+	HINSTANCE hInstance = GetModuleHandle(NULL); // получение HINSTANCE приложени€
+    HWND hwnd;
+    MSG msg;
+    WNDCLASSEX wincl;
+ 
+    wincl.hInstance = hInstance;							/*				*/
+    wincl.lpszClassName = szClassName;						//
+    wincl.lpfnWndProc = WndProc;							//
+    wincl.style = CS_DBLCLKS | CS_VREDRAW | CS_HREDRAW;		//
+    wincl.cbSize = sizeof (WNDCLASSEX);
+ 
+    wincl.hIcon = LoadIcon (NULL, IDI_APPLICATION);					// дл€ регистрации класса окна
+    wincl.hIconSm = LoadIcon (NULL, IDI_APPLICATION);
+    wincl.hCursor = LoadCursor (NULL, IDC_ARROW);
+    wincl.lpszMenuName = NULL;
+    wincl.cbClsExtra = 0;									//
+    wincl.cbWndExtra = 0;									/*				*/
+ 
+    wincl.hbrBackground = (HBRUSH) (COLOR_WINDOW+1);
+ 
+    if (!RegisterClassEx (&wincl))							// регистраци€ класса дл€ создани€ окна
+        return 0;
+    
+    //hInst = hInstance;
+
+ 
+    hwnd = CreateWindowEx (								// создаем окно, но не показываем
+           NULL,
+           szClassName,
+           L"",
+           WS_POPUP,
+           0,
+           0,
+           ResolutionScreenX,
+           ResolutionScreenY,
+           HWND_DESKTOP,
+           NULL,
+           hInstance,
+           NULL
+           );
+
+	ShowWindow (hwnd, 1);	// вместо 1 параметр nCmdShow
+
+	/*while (GetMessage (&msg, NULL, 0, 0))
+    {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+	*/
+	// получаем изображение
+	do 
+	{
+		
+		char* bufferForImage = NULL;
+		char* bufferForSize = NULL;
+		unsigned int sizeOfFile = 0;
+		//lpParameters contain  ClientSocket
+		//сначала считываем размер, потом сам файл
+		bufferForSize = new char[10];
+
+		iResult = recv(ClientSocket, bufferForSize, 10, 0);
+		if (iResult > 0)
+		{
+			sizeOfFile = atoi(bufferForSize);
+		}
+		else if (iResult == 0)
+			cout << "Connection closed." << endl;
+		else
+			cout << "Recv failed: " << WSAGetLastError() << endl;
+
+
+		bufferForImage = new char[sizeOfFile];
+
+		iResult = recv(ClientSocket, bufferForImage, sizeOfFile, 0);
+
+		if (iResult == 0)
+			cout << "Connection closed." << endl;
+		if (iResult < 0)
+			cout << "Recv failed: " << WSAGetLastError() << endl;
+
+		FILE *fImage = fopen("TempImage2.jpeg", "wb");
+
+		iResult = fwrite(bufferForImage, 1, sizeOfFile, fImage);
+
+		free(bufferForSize);
+		free(bufferForImage);
+
+		fclose(fImage);
+
+		Sleep(10);
+
+		ConvertToBMP();
+
+		InvalidateRect(hwnd, NULL, NULL);
+		UpdateWindow(hwnd);
+///////////////////////////////////////////////////////////////////////////////////////
+		
+	} 
+	while (1);
+}
+
+LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+        static HBITMAP hImage;
+		static BITMAP bm;
+        
+        HDC hPaintDC, hMemDC;
+         PAINTSTRUCT ps;
+        HGDIOBJ hOld;		// дескриптор графического объекта
+        
+    switch (message)
+    {
+        case WM_PAINT:
+			 
+			
+            hImage = (HBITMAP)LoadImage(NULL,L"TempImage2.bmp", IMAGE_BITMAP,0,0,LR_LOADFROMFILE);
+			GetObject(hImage,sizeof(BITMAP),&bm);
+            hPaintDC = BeginPaint (hwnd, &ps);
+            hMemDC = CreateCompatibleDC (hPaintDC);
+            hOld = SelectObject (hMemDC, hImage);
+             
+            BitBlt (hPaintDC, 0, 0, bm.bmWidth, bm.bmHeight, hMemDC, 0, 0, SRCCOPY);// после этого по€вл€етс€ изображение
+             
+            SelectObject (hMemDC, hOld);
+            DeleteDC (hMemDC);
+			//DeleteDC (hPaintDC);
+			//DeleteObject(hImage);
+			
+            EndPaint (hwnd, &ps);
+			
+            break;
+        case WM_DESTROY:
+            DeleteObject (hImage);
+            PostQuitMessage (0);
+            break;
+        default:
+            return DefWindowProc (hwnd, message, wParam, lParam);
+    }
+ 
+    return 0;
+}
