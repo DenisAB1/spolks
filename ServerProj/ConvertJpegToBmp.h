@@ -1,1 +1,1 @@
-int ConvertToBMP();
+int ConvertToBMP(HANDLE hFile);

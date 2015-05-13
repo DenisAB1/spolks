@@ -118,7 +118,7 @@ int CaptureBMP(LPCTSTR szFile)
                     (DWORD) 0,
                     NULL,
                     CREATE_ALWAYS,
-                    FILE_ATTRIBUTE_NORMAL,
+                    FILE_ATTRIBUTE_TEMPORARY,
                     (HANDLE) NULL);
     if (hf == INVALID_HANDLE_VALUE) return 0;
  
@@ -159,7 +159,6 @@ int CaptureBMP(LPCTSTR szFile)
     ReleaseDC(0, hdcMem);
  
 	DeleteObject(hbmScr);	//add
-	//free(hp);
 	DeleteDC(hdcScr);
 	DeleteDC(hdcMem);
     return 1;
@@ -198,7 +197,7 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 
 void GetScreenShot()
 {
-    CaptureBMP(L"zz.bmp");
+    CaptureBMP(L"TempImageCLient.bmp");
  
     GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken;
@@ -206,13 +205,13 @@ void GetScreenShot()
  
     CLSID   encoderClsid;
     Status  stat;
-    Image*   image = new Image(L"zz.bmp");
+    Image*   image = new Image(L"TempImageCLient.bmp");
  
     GetEncoderClsid(L"image/jpeg", &encoderClsid);
  
-    stat = image->Save(L"TempImage.jpeg", &encoderClsid, NULL);
+    stat = image->Save(L"TempImageCLient.jpeg", &encoderClsid, NULL);
  
     delete image;
-    remove("zz.bmp");
+   // remove("TempImageCLient.bmp");
     GdiplusShutdown(gdiplusToken);
 }

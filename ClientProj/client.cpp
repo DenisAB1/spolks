@@ -11,7 +11,7 @@ using namespace std;
 #pragma comment(lib, "Ws2_32.lib")
 
 #define DEFAULT_PORT "27015"
-#define IP_SERVER "192.168.0.100"
+char* IP_SERVER = { "192.168.0.101"};
 
 SOCKET ConnectSocket;
 HANDLE hNamedPipe;
@@ -21,6 +21,10 @@ DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters);
 
 int main() 
 {
+	//char IP_SERVER[15];
+	//cout << "Enter IP of computer-server: ";
+	//cin >> IP_SERVER;
+	char ServerName[20];
 	WSADATA wsaData;
 	struct addrinfo *result = NULL, *ptr = NULL, hints;
 	int iResult;
@@ -29,6 +33,7 @@ int main()
 	if (iResult != 0) 
 	{
 		cout << "WSAStartup failed: " << iResult << endl;
+		_getch();
 		return 0;
 	}
 
@@ -42,9 +47,9 @@ int main()
 	{
 		cout << "Getaddrinfo failed: " << iResult << endl;
 		WSACleanup();
+		_getch();
 		return 0;
 	}
-
 	ptr=result;
 
 		// создаем сокет для подключения к серверу
@@ -54,6 +59,7 @@ int main()
 		cout << "Error at socket(): " << WSAGetLastError() << endl;
 		freeaddrinfo(result);
 		WSACleanup();
+		_getch();
 		return 0;
 	}
 			// пытаемся соединиться с сервером
@@ -69,20 +75,40 @@ int main()
 	if (ConnectSocket == INVALID_SOCKET) 
 	{
 		cout << "Unable to connect to server!" << endl;
-		
+		_getch();
 		return 0;
 	}
 
 	cout << "Connection to server was succesful." << endl;
 
-	if(!WaitNamedPipe(L"\\\\Denis1\\pipe\\qwe", 1000))
+	
+	DWORD sizeOfServerName;
+	//Sleep(1000);
+	iResult = recv(ConnectSocket, ServerName, 7, 0);
+	if (iResult == 0)
+	{
+		cout << "Connection closed." << endl;
+		_getch();
+		return 0;
+	}
+	if (iResult < 0)
+	{
+		cout << "Getting server name failed: " << WSAGetLastError() << endl;
+		_getch;
+		return 0;
+	}
+
+	char synchPipeName[40];
+	sprintf(synchPipeName, "%s%s%s", "\\\\", ServerName, "\\pipe\\synchroPipe");
+	cout << synchPipeName << endl;
+	if(!WaitNamedPipeA(synchPipeName, 1000))
 	{
 		cout << "Pipe waiting error." << GetLastError() << endl;
 		_getch();
 		return 0;
 	}
 	
-	hNamedPipe = CreateFile(L"\\\\Denis1\\pipe\\qwe", GENERIC_READ | GENERIC_WRITE, 0 , NULL, OPEN_EXISTING, 0, NULL);
+	hNamedPipe = CreateFileA(synchPipeName, GENERIC_READ | GENERIC_WRITE, 0 , NULL, OPEN_EXISTING, 0, NULL);
 	if(hNamedPipe == INVALID_HANDLE_VALUE)
 	{
 		
@@ -104,20 +130,26 @@ int main()
 	{
 		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
 		if (iResult > 0)
-		{
-			//cout << "Bytes received: " << iResult << endl;
 			StringToCursorPos(recvbuf);		//переводит в точку и устанавливает курсор
-			//cout << recvbuf;
-		}
 		else if (iResult == 0)
+		{
 			cout << "Connection closed." << endl;
+			_getch();
+			return 0;
+		}
 		else
+		{
 			cout << "Recv failed: " << WSAGetLastError() << endl;
+			_getch();
+			return 0;
+		}
 	
 	} 
 	while (iResult > 0);
 	//freeaddrinfo(result);
 	//WSACleanup();
+	//remove("TempImageClient.bmp");
+	//remove("TempImageClient.jpeg");
 	TerminateThread(hThread, NO_ERROR);
 	CloseHandle(hNamedPipe);
 	cout << "end of all";
@@ -128,7 +160,7 @@ int main()
 void StringToCursorPos(char* recvbuf)
 {
 	int mouseAction = 0;
-	HWND hwnd;
+	//HWND hwnd;
 	POINT pt;
 	pt.x = 0;
 	pt.y = 0;
@@ -154,22 +186,12 @@ void StringToCursorPos(char* recvbuf)
 	SetCursorPos(pt.x, pt.y);
 
 	
-	hwnd = WindowFromPoint(pt);
+	//hwnd = WindowFromPoint(pt);
 	switch(mouseAction)
 	{
 	case WM_MOUSEMOVE:
 		break;
-	case WM_LBUTTONDOWN:
-		/*INPUT inputstracture;
-		inputstracture.type = INPUT_MOUSE;
-		inputstracture.mi.dx = pt.x;
-		inputstracture.mi.dy = pt.y;
-		inputstracture.mi.mouseData = NULL;
-		inputstracture.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
-		SendInput(1, &inputstracture, sizeof(inputstracture));
-		inputstracture.mi.dwFlags = MOUSEEVENTF_LEFTUP;
-		SendInput(1, &inputstracture, sizeof(inputstracture));*/
-		
+	case WM_LBUTTONDOWN:	
 		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTDOWN, pt.x, pt.y, 0, 0); // нажали
 		cout << "left_down" << endl;
 		break;
@@ -179,7 +201,19 @@ void StringToCursorPos(char* recvbuf)
 		break;
 	case WM_RBUTTONDOWN:
 		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTDOWN, pt.x, pt.y, 0, 0); // нажали
+		cout << "right_down" << endl;
+		break;
+	case WM_RBUTTONUP:
 		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0); //отпустили
+		cout << "right_up" << endl;
+		break;
+	case WM_MBUTTONDOWN:
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0); //отпустили
+		cout << "Middle button down!" << endl;
+		break;
+	case WM_MBUTTONUP:
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0); //отпустили
+		cout << "Middle button up!" << endl;
 		break;
 
 	}
@@ -202,10 +236,13 @@ DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters)
 			cout << "Send failed: " << WSAGetLastError() << endl;
 			closesocket((SOCKET)lpParameters);
 			WSACleanup();
+			_getch();
 			return 0;
 		}
+	static int counter = 0;																	//////тест скорости
 	do 
 	{
+		counter++;																			//////тест скорости
 		//lpParameters contain  ConnectSocket
 		
 		char* bufferForImage = NULL;
@@ -217,19 +254,12 @@ DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters)
 		GetScreenShot();
 
 		char bufferSynch[1];
-		DWORD numberOfReadBytes;
+		DWORD numberOfReadBytes = 0;
 		bufferSynch[0] = '\0';
-		//cout << "waiting for read" << endl;
-		
-		//cout << "posle screenshot " << numberOfReadBytes << endl;
 
-		//WaitForSingleObject(hEventStartScreen, INFINITE);	
+		HANDLE hFileImageC = CreateFile(L"TempImageClient.jpeg", GENERIC_READ, 0,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_TEMPORARY, NULL);
 
-		FILE *fImage = fopen("TempImage.jpeg","rb");
-
-		fseek (fImage , 0 , SEEK_END);
-		sizeOfFile = ftell (fImage);
-		rewind (fImage);
+		sizeOfFile = GetFileSize(hFileImageC, NULL); 
 
 		bufferForSize = new char[10];
 		itoa(sizeOfFile, bufferForSize, 10);
@@ -240,14 +270,12 @@ DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters)
 		ReadFile(hNamedPipe, bufferSynch, 1, &numberOfReadBytes, NULL);
 		}while(numberOfReadBytes == 0);
 		iSendResult = send((SOCKET)lpParameters, bufferForSize, strlen(bufferForSize), 0);
-
-		
 		
 
 		bufferForImage = new char[sizeOfFile];  
 		//передача сначала размера изображения, потом самого изображения
 
-		numberOfbytes = fread(bufferForImage, 1, sizeOfFile, fImage);
+		ReadFile(hFileImageC, bufferForImage, sizeOfFile, &numberOfReadBytes, NULL);
 		
 		numberOfReadBytes = 0;
 		bufferSynch[0] = '\0';
@@ -256,27 +284,20 @@ DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters)
 		}while(numberOfReadBytes == 0);
 		iSendResult = send((SOCKET)lpParameters, bufferForImage, sizeOfFile, 0);
 
-		cout << "send: " << iSendResult << endl;
+		cout << counter <<" send: " << iSendResult << endl;													//////тест скорости
 		if (iSendResult == SOCKET_ERROR)
 		{
 			cout << "Send failed: " << WSAGetLastError() << endl;
 			closesocket((SOCKET)lpParameters);
 			WSACleanup();
+			_getch();
 			return 0;
 		}
 		free(bufferForImage);
 		free(bufferForSize);
-		fclose(fImage);
-
-		//bufferSynch[0] = '\0';
-		
-			//ReadFile(hNamedPipe, bufferSynch, 1, &numberOfReadBytes, NULL);
-		//	cout << numberOfReadBytes << endl;
-		
-		//WaitForSingleObject(hEventStartScreen); // ждем готовности принять изображение
-
-		//Sleep(1000);
-
+		CloseHandle(hFileImageC);
+		//remove("TempImageClient.bmp");
+		//remove("TempImageClient.jpeg");
 	} 
 	while (1);
 }
