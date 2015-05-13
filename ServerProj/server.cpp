@@ -19,6 +19,8 @@ int ResolutionScreenY = 0;
 
 #define DEFAULT_PORT "27015"
 
+HANDLE hNamedPipe;
+
 void CursorPosToString(char* sendbuf, int mouseButton);
 void SendToClient(int mouseButton);
 
@@ -29,6 +31,23 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters);
 
 int main() 
 {
+	SECURITY_ATTRIBUTES sa;
+	SECURITY_DESCRIPTOR sd;
+	sa.nLength = sizeof(sa);
+	sa.bInheritHandle = FALSE; // дескриптор канала ненаследуемый
+	InitializeSecurityDescriptor(&sd,SECURITY_DESCRIPTOR_REVISION); 
+	SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE);
+	sa.lpSecurityDescriptor = &sd; 
+
+	hNamedPipe = CreateNamedPipe(L"\\\\.\\pipe\\qwe", PIPE_ACCESS_DUPLEX, NULL, 1, 100, 100, NULL, &sa);
+	if(hNamedPipe == INVALID_HANDLE_VALUE)
+	{
+		
+		cout << "Pipe creating error." << GetLastError() << endl;
+		_getch();
+		return 0;
+	}
+	
 	WSADATA wsaData;
 	struct addrinfo *result = NULL, *ptr = NULL, hints;
 	int iResult;
@@ -40,6 +59,8 @@ int main()
 	hints.ai_socktype = SOCK_STREAM;	// последовательное двусторонний поток байтов
 	hints.ai_protocol = IPPROTO_TCP;	// протокол - Transmission Control Protocol
 	hints.ai_flags = AI_PASSIVE;		// клиент сможет подключиться с любым адресом
+
+	cout << "Waiting for client connection..." << endl;
 
 	iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
 	if (iResult != 0)
@@ -110,46 +131,47 @@ int main()
 	freeaddrinfo(result);
     closesocket(ListenSocket);
     WSACleanup();
+	CloseHandle(hNamedPipe);
 	TerminateThread(hThread, NO_ERROR);
 	cout << "end of all";
 	_getch();
+	
 	return 0;
 }
 
 void CursorPosToString(char* sendbuf, int mouseButton)
 {
-	POINT pt;
-	char xPos[5];
-	char yPos[5];
-	char mouse[5];
+	static POINT pt;
 	GetCursorPos(&pt);
 	sendbuf[0] = '\0';
-	itoa(pt.x, xPos, 10);
-	itoa(pt.y, yPos, 10);
-	strcat(sendbuf, xPos);
-	strcat(sendbuf, "_");
-	strcat(sendbuf, yPos);
-	strcat(sendbuf, "_");
-	strcat(sendbuf, itoa(mouseButton, mouse, 10));
+	sprintf(sendbuf, "%d_%d_%d", pt.x, pt.y, mouseButton);
 }
 
 LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
-    DWORD dwKCode = ((KBDLLHOOKSTRUCT*)lParam)->vkCode;
+    static DWORD dwKCode = ((KBDLLHOOKSTRUCT*)lParam)->vkCode;
 	switch(wParam)
 	{
 	case WM_MOUSEMOVE:
 		//cout << "Mouse is moving!" << endl;
+		Sleep(35);
 		SendToClient(WM_MOUSEMOVE);
-		Sleep(5);
 		break;
 	case WM_LBUTTONDOWN:
-		//cout << "Left button clicked!" << endl;
+		cout << "Left button down!" << endl;
 		SendToClient(WM_LBUTTONDOWN);
+		Sleep(20);
+		break;
+	case WM_LBUTTONUP:
+		cout << "Left button up!" << endl;
+		SendToClient(WM_LBUTTONUP);
+		Sleep(50);
 		break;
 	case WM_RBUTTONDOWN:
 		//cout << "Right button clicked!" << endl;
 		SendToClient(WM_RBUTTONDOWN);
+		break;
+	default:
 		break;
 	}
  
@@ -194,18 +216,21 @@ WM_MOUSEHWHEEL = 0x20E*/
 
 DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 {
-
-
-	wchar_t szClassName[ ] = L"WindowClass";
+	DWORD numberOfWrittenBytes;
+	static wchar_t szClassName[ ] = L"WindowClass";
 
 	//принимаем разрешение экрана
 	int iResult = 0;
-	char bufferForScr[9] = {'\0'};
+	static char bufferForScr[9] = {'\0'};
 	iResult = recv(ClientSocket, bufferForScr, 9, 0);
 	if (iResult == 0)
 		cout << "Connection closed." << endl;
 	if (iResult < 0)
 		cout << "Recv failed: " << WSAGetLastError() << endl;
+	//free(bufferForScr);
+	//WriteFile(hNamedPipe, "*", 1, &numberOfWrittenBytes, NULL);
+	//cout << "resolution get" << numberOfWrittenBytes << endl;
+	//send(ClientSocket, temp, 1, 0); // типа синхронизация
 
 	//переводим строку в числа
 	int i = 0;
@@ -274,7 +299,8 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 	// получаем изображение
 	do 
 	{
-		
+		fflush(stdin);
+		fflush(stdout);
 		char* bufferForImage = NULL;
 		char* bufferForSize = NULL;
 		unsigned int sizeOfFile = 0;
@@ -282,23 +308,27 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 		//сначала считываем размер, потом сам файл
 		bufferForSize = new char[10];
 
+		WriteFile(hNamedPipe, "*", 1, &numberOfWrittenBytes, NULL);
 		iResult = recv(ClientSocket, bufferForSize, 10, 0);
+
 		if (iResult > 0)
 		{
 			sizeOfFile = atoi(bufferForSize);
 		}
 		else if (iResult == 0)
-			cout << "Connection closed." << endl;
+			cout << "Connection closed. Size of image not recieved" << endl;
 		else
 			cout << "Recv failed: " << WSAGetLastError() << endl;
-
+		free(bufferForSize);
+		
 
 		bufferForImage = new char[sizeOfFile];
 
+		WriteFile(hNamedPipe, "*", 1, &numberOfWrittenBytes, NULL);
 		iResult = recv(ClientSocket, bufferForImage, sizeOfFile, 0);
 
 		if (iResult == 0)
-			cout << "Connection closed." << endl;
+			cout << "Connection closed. Image not received." << endl;
 		if (iResult < 0)
 			cout << "Recv failed: " << WSAGetLastError() << endl;
 
@@ -306,17 +336,21 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 
 		iResult = fwrite(bufferForImage, 1, sizeOfFile, fImage);
 
-		free(bufferForSize);
 		free(bufferForImage);
 
 		fclose(fImage);
 
-		Sleep(10);
+		//Sleep(10);
 
 		ConvertToBMP();
 
 		InvalidateRect(hwnd, NULL, NULL);
 		UpdateWindow(hwnd);
+
+		//SetEvent(hEventStartScreen); // можно начинать следующий скрин делать
+		
+		//WriteFile(hNamedPipe, "*", 1, &numberOfWrittenBytes, NULL);
+		cout << "posle update" << numberOfWrittenBytes << endl;
 ///////////////////////////////////////////////////////////////////////////////////////
 		
 	} 
@@ -329,13 +363,12 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		static BITMAP bm;
         
         HDC hPaintDC, hMemDC;
-         PAINTSTRUCT ps;
+        PAINTSTRUCT ps;
         HGDIOBJ hOld;		// дескриптор графического объекта
         
     switch (message)
     {
-        case WM_PAINT:
-			 
+        case WM_PAINT: 
 			
             hImage = (HBITMAP)LoadImage(NULL,L"TempImage2.bmp", IMAGE_BITMAP,0,0,LR_LOADFROMFILE);
 			GetObject(hImage,sizeof(BITMAP),&bm);
@@ -346,12 +379,12 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             BitBlt (hPaintDC, 0, 0, bm.bmWidth, bm.bmHeight, hMemDC, 0, 0, SRCCOPY);// после этого появляется изображение
              
             SelectObject (hMemDC, hOld);
-            DeleteDC (hMemDC);
-			//DeleteDC (hPaintDC);
-			//DeleteObject(hImage);
 			
             EndPaint (hwnd, &ps);
-			
+
+			DeleteDC (hMemDC);
+			DeleteDC (hPaintDC);
+			DeleteObject(hImage);
             break;
         case WM_DESTROY:
             DeleteObject (hImage);

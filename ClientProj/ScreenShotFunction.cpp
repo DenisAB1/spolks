@@ -9,7 +9,7 @@ int CaptureBMP(LPCTSTR szFile)
     // Source[1]
     HDC hdcScr, hdcMem;
     HBITMAP hbmScr;
-    BITMAP bmp;
+    static BITMAP bmp;
     int iXRes, iYRes;
  
     // Create a normal DC and a memory DC for the entire screen. The
@@ -158,6 +158,10 @@ int CaptureBMP(LPCTSTR szFile)
     ReleaseDC(0, hdcScr);
     ReleaseDC(0, hdcMem);
  
+	DeleteObject(hbmScr);	//add
+	//free(hp);
+	DeleteDC(hdcScr);
+	DeleteDC(hdcMem);
     return 1;
 } 
 
