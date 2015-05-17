@@ -4,6 +4,7 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 int ResWindowX;
 int ResWindowY;
+HANDLE hEventNextUpdateW = OpenEvent(EVENT_ALL_ACCESS, NULL, L"EventNextUpdate");
 
 HWND CreateNewWindow(int ResolutionScreenClientX, int ResolutionScreenClientY)
 {
@@ -21,7 +22,7 @@ HWND CreateNewWindow(int ResolutionScreenClientX, int ResolutionScreenClientY)
     wincl.hInstance = hInstance;							/*				*/
     wincl.lpszClassName = szClassName;						//
     wincl.lpfnWndProc = WndProc;							//
-    wincl.style = CS_DBLCLKS | CS_VREDRAW | CS_HREDRAW;		//
+	wincl.style =CS_DBLCLKS | CS_VREDRAW | CS_HREDRAW;		//
     wincl.cbSize = sizeof (WNDCLASSEX);
  
     wincl.hIcon = LoadIcon (NULL, IDI_APPLICATION);					// для регистрации класса окна
@@ -37,19 +38,20 @@ HWND CreateNewWindow(int ResolutionScreenClientX, int ResolutionScreenClientY)
         return NULL;
 
 	hwnd = CreateWindowEx (								// создаем окно, но не показываем
-           NULL,
+           WS_EX_TRANSPARENT,
            szClassName,
-           L"",
-           WS_POPUP,
+           L"RemoteComputer",
+		   WS_POPUP,
            0,
            0,
            ResWindowX,
            ResWindowY,
-           HWND_DESKTOP,
+           HWND_DESKTOP,		//
            NULL,
            hInstance,
            NULL
            );
+	//SetPriorityClass(hwnd, REALTIME_PRIORITY_CLASS);
 
 	ShowWindow (hwnd, 1);
 
@@ -67,6 +69,9 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         
     switch (message)
     {
+		//case WM_CREATE:
+			//break;
+			
         case WM_PAINT: 
 			
             hImage = (HBITMAP)LoadImage(NULL,L"TempImageServer.bmp", IMAGE_BITMAP,ResWindowX,ResWindowY,LR_LOADFROMFILE); // сделать под любой размер
@@ -82,6 +87,7 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             hMemDC = CreateCompatibleDC (hPaintDC);
             hOld = SelectObject (hMemDC, hImage);
              
+			//StretchBlt(hMemDC, 0, 0, iXRes*2, iYRes*2, hdcScr, 0, 0, iXRes, iYRes, SRCCOPY);
             BitBlt (hPaintDC, 0, 0, bm.bmWidth, bm.bmHeight, hMemDC, 0, 0, SRCCOPY);// после этого появляется изображение
              
             SelectObject (hMemDC, hOld);
@@ -91,12 +97,14 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			DeleteDC (hMemDC);
 			DeleteDC (hPaintDC);
 			DeleteObject(hImage);
+			SetEvent(hEventNextUpdateW);
             break;
         case WM_DESTROY:
             DeleteObject (hImage);
             PostQuitMessage (0);
             break;
         default:
+			//break;
             return DefWindowProc (hwnd, message, wParam, lParam);
     }
     return 0;

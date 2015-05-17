@@ -11,27 +11,33 @@
 
 using namespace std;
 
+#define SIZE_OF_NAME_SERVER 20
+
 HHOOK hHookMouse;
 HHOOK hHookKeyboard;
-SOCKET ClientSocket;		//переделать на локальное объявление
+SOCKET ClientSocket;		
+HWND hWndImage;
+
+int ResolutionScreenClientX = 0;
+int ResolutionScreenClientY = 0;
 
 double kCursorX = 1;
 double kCursorY = 1;
-
 
 #pragma comment(lib, "Ws2_32.lib")
 
 #define DEFAULT_PORT "27015"
 
 HANDLE hNamedPipe;
+HANDLE hKeybordPipe;
+HANDLE hEventMouse = CreateEvent(NULL, FALSE, TRUE, NULL);
+HANDLE hEventNextUpdate = CreateEvent(NULL, FALSE, TRUE, L"EventNextUpdate");
 
-void CursorPosToString(char* sendbuf, int mouseButton);
-void SendToClient(int mouseButton);
+void SendToClient(int x, int y, int mouseButton, char c, int delta);
 
 LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
 
-DWORD WINAPI ThreadKeyboardFunction (LPVOID lpParameters);
 DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters);
 
 int main() 
@@ -41,13 +47,17 @@ int main()
 	int iResult;
 	SOCKET ListenSocket;
 
+	char ServerName[SIZE_OF_NAME_SERVER];
+	DWORD sizeOfServerName;
+	GetComputerNameA(ServerName, &sizeOfServerName);
+	ServerName[sizeOfServerName] = '\0';
+
 	ZeroMemory(&hints, sizeof (hints));
 	hints.ai_family = AF_INET;			// будет использоваться IPv4
 	hints.ai_socktype = SOCK_STREAM;	// последовательное двусторонний поток байтов
 	hints.ai_protocol = IPPROTO_TCP;	// протокол - Transmission Control Protocol
 	hints.ai_flags = AI_PASSIVE;		// клиент сможет подключиться с любым адресом
 
-	cout << "Waiting for client connection..." << endl;
 
 	iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
 	if (iResult != 0)
@@ -56,6 +66,22 @@ int main()
 		_getch();
 		return 0;
 	}
+
+	hostent *sh;
+	sh = gethostbyname(ServerName);
+
+	int nAdapter = 0;
+	cout << "Your ip-addresses:" << endl;
+	while (sh->h_addr_list[nAdapter])
+	{
+		struct sockaddr_in adr;
+		memcpy(&adr.sin_addr, sh->h_addr_list[nAdapter], sh->h_length);
+		cout << inet_ntoa(adr.sin_addr);
+		nAdapter++;
+		cout << endl;
+	}
+
+	cout << "Waiting for client connection..." << endl;
 
 	iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);	// создаем структуру адреса сокета
 	if (iResult != 0) 
@@ -108,14 +134,10 @@ int main()
 		return 0;
 	}
 
-	char ServerName[20];
-	DWORD sizeOfServerName;
-	GetComputerNameA(ServerName, &sizeOfServerName);
-	ServerName[sizeOfServerName] = '\0';
-
 	cout << "Client has connected." << endl;
-	Sleep(200);
-	int iSendResult = send(ClientSocket, ServerName, 7, 0);
+
+		//передаем имя компьютера
+	int iSendResult = send(ClientSocket, ServerName, SIZE_OF_NAME_SERVER, 0);
 
 	if (iSendResult == SOCKET_ERROR)
 	{
@@ -134,10 +156,7 @@ int main()
 	SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE);
 	sa.lpSecurityDescriptor = &sd; 
 
-
-	//передать имя компьютера
-	
-	hNamedPipe = CreateNamedPipe(L"\\\\.\\pipe\\synchroPipe", PIPE_ACCESS_DUPLEX, NULL, 1, 100, 100, NULL, &sa);
+	hNamedPipe = CreateNamedPipe(L"\\\\.\\pipe\\synchroPipe", PIPE_ACCESS_DUPLEX, NULL, 1, 100, 100, INFINITE, &sa);
 	if(hNamedPipe == INVALID_HANDLE_VALUE)
 	{	
 		cout << "Pipe creating failed. Error: " << GetLastError() << endl;
@@ -145,27 +164,45 @@ int main()
 		return 0;
 	}
 
-	HANDLE hThreadImage;
-	HANDLE hThreadKeyboard;
-	DWORD IDThreadImage;
-	DWORD IDThreadKeyboard;
-	hThreadImage = CreateThread(NULL, NULL, ThreadRecvImageFunction, (void*)ClientSocket, 0, &IDThreadImage);
-	hThreadImage = CreateThread(NULL, NULL, ThreadKeyboardFunction, (void*)ClientSocket, 0, &IDThreadKeyboard);
+	if(!ConnectNamedPipe(hNamedPipe, NULL))
+	{
+		cout << "Pipe connecting error: " << GetLastError() << endl;
+	}
+
+	hKeybordPipe = CreateNamedPipe(L"\\\\.\\pipe\\keyboardPipe", PIPE_ACCESS_DUPLEX, NULL, 1, 1000, 1000, INFINITE, &sa);
+	if(hKeybordPipe == INVALID_HANDLE_VALUE)
+	{	
+		cout << "Pipe creating failed. Error: " << GetLastError() << endl;
+		_getch();
+		return 0;
+	}
+
+	if(!ConnectNamedPipe(hKeybordPipe, NULL))
+	{
+		cout << "Pipe connecting error: " << GetLastError() << endl;
+	}
 	
-	POINT pt;
+	HANDLE hThreadImage;
+	DWORD IDThreadImage;
+	hThreadImage = CreateThread(NULL, NULL, ThreadRecvImageFunction, (void*)ClientSocket, 0, &IDThreadImage);
 	
 	hHookMouse = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, GetModuleHandle(NULL), 0);
-	hHookKeyboard = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, GetModuleHandle(NULL), 0); // IDThreadKeyboard
+	hHookKeyboard = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, GetModuleHandle(NULL), 0); 
 	MSG msg = { 0 };
 
-	while(GetMessage(&msg, NULL, 0, 0));
+	while(GetMessage(&msg, NULL, 0, 0))
+	{
+		TranslateMessage(&msg);
+        DispatchMessage(&msg);
+	}
 
 	freeaddrinfo(result);
     closesocket(ListenSocket);
     WSACleanup();
 	CloseHandle(hNamedPipe);
+	CloseHandle(hEventNextUpdate);
+	CloseHandle(hEventMouse);
 	TerminateThread(hThreadImage, NO_ERROR);
-	TerminateThread(hThreadKeyboard, NO_ERROR);
 
 	UnhookWindowsHookEx(hHookMouse);
 	UnhookWindowsHookEx(hHookKeyboard);
@@ -178,54 +215,57 @@ int main()
 	return 0;
 }
 
-void CursorPosToString(char* sendbuf, int mouseButton)
-{
-	static POINT pt;
-	GetCursorPos(&pt);
-	sendbuf[0] = '\0';
-	//if(kCursorX != 1 || kCursorX != 1) 
-	sprintf(sendbuf, "%d_%d_%d", (int)(pt.x * kCursorX), (int)(pt.y * kCursorY), mouseButton);
-}
-
 LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
-    static DWORD dwKCode = ((KBDLLHOOKSTRUCT*)lParam)->vkCode;
-	MOUSEHOOKSTRUCT *mh = (MOUSEHOOKSTRUCT*)lParam;
-	
+	MSLLHOOKSTRUCT *mh = (MSLLHOOKSTRUCT*)lParam;
+	signed short length;
+
+	if(hWndImage != GetForegroundWindow())
+		return CallNextHookEx(hHookMouse, nCode, wParam, lParam);
+
+	WaitForSingleObject(hEventMouse, INFINITE);
+
 	switch(wParam)
 	{
 	case WM_MOUSEMOVE:	
-		SendToClient(WM_MOUSEMOVE);
-		Sleep(30);
+		SendToClient(mh->pt.x, mh->pt.y, WM_MOUSEMOVE, '\0', 0);
 		break;
 	case WM_LBUTTONDOWN:
-		cout << "Left button down!" << &wParam << endl;
-		SendToClient(WM_LBUTTONDOWN);
-		Sleep(20);
+		SendToClient(mh->pt.x, mh->pt.y, WM_LBUTTONDOWN, '\0', 0);
 		break;
 	case WM_LBUTTONUP:
-		cout << "Left button up!" << endl;
-		SendToClient(WM_LBUTTONUP);
-		Sleep(50);
+		SendToClient(mh->pt.x, mh->pt.y, WM_LBUTTONUP, '\0', 0);
 		break;
 	case WM_RBUTTONDOWN:
-		cout << "Right button down!" << endl;
-		SendToClient(WM_RBUTTONDOWN);
+		SendToClient(mh->pt.x, mh->pt.y, WM_RBUTTONDOWN, '\0', 0);
 		break;
 	case WM_RBUTTONUP:
-		cout << "Right button up!" << endl;
-		SendToClient(WM_RBUTTONUP);
+		SendToClient(mh->pt.x, mh->pt.y, WM_RBUTTONUP, '\0', 0);
 		break;
 	case WM_MBUTTONDOWN:
-		cout << "Middle button down!" << endl;
-		SendToClient(WM_MBUTTONDOWN);
+		SendToClient(mh->pt.x, mh->pt.y, WM_MBUTTONDOWN, '\0', 0);
 		break;
 	case WM_MBUTTONUP:
-		cout << "Middle button up!" << endl;
-		SendToClient(WM_MBUTTONUP);
+		SendToClient(mh->pt.x, mh->pt.y, WM_MBUTTONUP, '\0', 0);
+		break;
+	case WM_MOUSEWHEEL:
+		length = HIWORD(mh->mouseData);
+		length /= 120;
+		if(length > 0)
+			SendToClient(mh->pt.x, mh->pt.y, WM_MOUSEWHEEL, '+', length);
+		if(length < 0)
+			SendToClient(mh->pt.x, mh->pt.y, WM_MOUSEWHEEL, '-', length);
+		break;
+	case WM_MOUSEHWHEEL:
+		length = HIWORD(mh->mouseData);
+		length /= 120;
+		if(length > 0)
+			SendToClient(mh->pt.x, mh->pt.y, WM_MOUSEHWHEEL, '+', length);
+		if(length < 0)
+			SendToClient(mh->pt.x, mh->pt.y, WM_MOUSEHWHEEL, '-', length);
 		break;
 	default:
-		break;
+		 break;
 	}
  
     return CallNextHookEx(hHookMouse, nCode, wParam, lParam);
@@ -234,66 +274,50 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
 	KBDLLHOOKSTRUCT *ks = (KBDLLHOOKSTRUCT*) lParam;
-	switch(wParam)
-	{
-	case WM_KEYDOWN:
-		switch(ks->vkCode)
-		{
-			case VK_LEFT:
-				cout << "left_arrow_down" << endl;
-                break; 
-            case VK_RIGHT: 
-                break; 
-            case VK_UP: 
-                break; 
-            case VK_DOWN: 
-				break; 
-		}
-		
-	default:
-		break;
-	}
- 
+	DWORD numberOfWrittenBytes;
+	char sendbuf[10] = {'\0'};
+	if(hWndImage != GetForegroundWindow())
+		return CallNextHookEx(hHookKeyboard, nCode, wParam, lParam);
+
+	sprintf(sendbuf, "%d_%d_", wParam, ks->vkCode);
+	WriteFile(hKeybordPipe, sendbuf, 10, &numberOfWrittenBytes, NULL);
+
     return CallNextHookEx(hHookKeyboard, nCode, wParam, lParam);
 }
 
-void SendToClient(int mouseButton)
+void SendToClient(int x, int y, int mouseButton, char c, int delta)
 {
 	int iSendResult;
-	char sendbuf[128];
-	int sendbuflen = 128;	
-	CursorPosToString(sendbuf, mouseButton);
-	sendbuflen = strlen(sendbuf);
-	sendbuf[sendbuflen] = '\0';
-	iSendResult = send(ClientSocket, sendbuf, sendbuflen+1, 0);
+	char sendbuf[20];
+	int sendbuflen = 20;	
+
+	if(x > ResolutionScreenClientX)
+		x = ResolutionScreenClientX - 1;
+	if(y > ResolutionScreenClientY)
+		y = ResolutionScreenClientY - 1;
+
+	sprintf(sendbuf, "%d_%d_%d_%c%d\0", (int)(x * kCursorX), (int)(y * kCursorY), mouseButton, c, delta);
+	
+	iSendResult = send(ClientSocket, sendbuf, sendbuflen, 0);
 	if (iSendResult == SOCKET_ERROR)
 	{
 		cout << "Send of cursor failed. Error: " << WSAGetLastError() << endl;
 		closesocket(ClientSocket);
 		WSACleanup();
+
+		CloseHandle(hNamedPipe);
+		CloseHandle(hEventNextUpdate);
+		CloseHandle(hEventMouse);
+
+		UnhookWindowsHookEx(hHookMouse);
+		UnhookWindowsHookEx(hHookKeyboard);
+		cout << "Client disconnected." << endl;
 		_getch();
 		return;
 	}
-	Sleep(15);
+	SetEvent(hEventMouse);
+	
 }
-
-/*WM_MOUSEMOVE = 0x200,
-WM_LBUTTONDOWN = 0x201,
-WM_LBUTTONUP = 0x202,
-WM_LBUTTONDBLCLK = 0x203,
-WM_RBUTTONDOWN = 0x204,
-WM_RBUTTONUP = 0x205,
-WM_RBUTTONDBLCLK = 0x206,
-WM_MBUTTONDOWN = 0x207,
-WM_MBUTTONUP = 0x208,
-WM_MBUTTONDBLCLK = 0x209,
-WM_MOUSEWHEEL = 0x20A,
-WM_XBUTTONDOWN = 0x20B,
-WM_XBUTTONUP = 0x20C,
-WM_XBUTTONDBLCLK = 0x20D,
-WM_MOUSEHWHEEL = 0x20E*/
-
-
 
 DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 {
@@ -318,8 +342,6 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 	}
 
 	//переводим строку в числа
-	int ResolutionScreenClientX = 0;
-	int ResolutionScreenClientY = 0;
 	int i = 0;
 
 	while(bufferForScr[i] != '_')
@@ -337,19 +359,20 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 	CheckWidthScreen(&kCursorX, &ResolutionScreenClientX);
 	ChechHeigthScreen(&kCursorY, &ResolutionScreenClientY);
 
-	HWND hwnd = CreateNewWindow(ResolutionScreenClientX, ResolutionScreenClientY);
+	hWndImage = CreateNewWindow(ResolutionScreenClientX, ResolutionScreenClientY);
 
 	// получаем изображение
 	do 
 	{
-		fflush(stdin);
-		fflush(stdout);
 		char* bufferForImage = NULL;
 		char* bufferForSize = NULL;
 		unsigned int sizeOfFile = 0;
 		//lpParameters contain  ClientSocket
 		//сначала считываем размер, потом сам файл
 		bufferForSize = new char[10];
+		int i = 0;
+		while(i < 10)
+			bufferForSize[i++] = NULL;
 
 		WriteFile(hNamedPipe, "*", 1, &numberOfWrittenBytes, NULL);
 		iResult = recv(ClientSocket, bufferForSize, 10, 0);
@@ -361,26 +384,32 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 		else if (iResult == 0)
 		{
 			cout << "Connection closed. Size of image not recieved." << endl;
+
 			_getch();
 			return 0;
 		}
 		else
 		{
-			cout << "Recv failed. Error: " << WSAGetLastError() << endl;
+			cout << "Recv() failed. Error: " << WSAGetLastError() << endl;
 			_getch();
 			return 0;
 		}
 		free(bufferForSize);
-		
 
 		bufferForImage = new char[sizeOfFile];
 
 		WriteFile(hNamedPipe, "*", 1, &numberOfWrittenBytes, NULL);
-		iResult = recv(ClientSocket, bufferForImage, sizeOfFile, 0);
 
+		iResult = recv(ClientSocket, bufferForImage, sizeOfFile, MSG_WAITALL);
+		
 		if (iResult == 0)
 		{
 			cout << "Connection closed. Image not received." << endl;
+			CloseHandle(hNamedPipe);
+			CloseHandle(hEventNextUpdate);
+			CloseHandle(hEventMouse);
+			UnhookWindowsHookEx(hHookMouse);
+			UnhookWindowsHookEx(hHookKeyboard);
 			_getch();
 			return 0;
 		}
@@ -392,25 +421,21 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 		}
 
 		HANDLE hFileImage = CreateFile(L"TempImageServer.jpeg", GENERIC_READ | GENERIC_WRITE, 0,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, NULL);
+		if(hFileImage == INVALID_HANDLE_VALUE)
+		{
+			cout << "CreateFile() failed. Error: "<< GetLastError() << endl;
+		}
 
 		WriteFile(hFileImage, bufferForImage, sizeOfFile, &numberOfWrittenBytes, NULL);	
 
-		ConvertToBMP(hFileImage);
-
-		CloseHandle(hFileImage);
+		ConvertToBMP(hFileImage);		
 
 		free(bufferForImage);
 
-		InvalidateRect(hwnd, NULL, NULL);
-		UpdateWindow(hwnd);	
-
-		//remove("TempImageServer.bmp");
-		//remove("TempImageServer.jpeg");
+		InvalidateRect(hWndImage, NULL, NULL);
+		WaitForSingleObject(hEventNextUpdate, INFINITE);
+		UpdateWindow(hWndImage);
+		CloseHandle(hFileImage);
 	} 
 	while (1);
-}
-
-DWORD WINAPI ThreadKeyboardFunction (LPVOID lpParameters)
-{
-	return 0;
 }

@@ -1,4 +1,5 @@
-#include <winsock2.h>
+#include <Winsock2.h>
+#include <Mswsock.h>
 #include <ws2tcpip.h>
 #include <iostream>
 #include <conio.h>
@@ -9,21 +10,25 @@
 using namespace std;
 
 #pragma comment(lib, "Ws2_32.lib")
+#pragma comment(lib, "Mswsock.lib")
 
 #define DEFAULT_PORT "27015"
-char* IP_SERVER = { "192.168.0.101"};
+#define SIZE_OF_NAME_SERVER 20
 
 SOCKET ConnectSocket;
 HANDLE hNamedPipe;
+HANDLE hKeyboardPipe;
 
 void StringToCursorPos(char* recvbuf);
 DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters);
+DWORD WINAPI ThreadGetKeysFunction (LPVOID lpParameters);
 
 int main() 
 {
-	//char IP_SERVER[15];
-	//cout << "Enter IP of computer-server: ";
-	//cin >> IP_SERVER;
+	char IP_SERVER[15];
+	cout << "Enter IP of computer-server: ";
+	cin >> IP_SERVER;
+
 	char ServerName[20];
 	WSADATA wsaData;
 	struct addrinfo *result = NULL, *ptr = NULL, hints;
@@ -82,9 +87,7 @@ int main()
 	cout << "Connection to server was succesful." << endl;
 
 	
-	DWORD sizeOfServerName;
-	//Sleep(1000);
-	iResult = recv(ConnectSocket, ServerName, 7, 0);
+	iResult = recv(ConnectSocket, ServerName, SIZE_OF_NAME_SERVER, 0);
 	if (iResult == 0)
 	{
 		cout << "Connection closed." << endl;
@@ -94,37 +97,59 @@ int main()
 	if (iResult < 0)
 	{
 		cout << "Getting server name failed: " << WSAGetLastError() << endl;
-		_getch;
+		_getch();
 		return 0;
 	}
 
 	char synchPipeName[40];
+	char keyboardPipeName[40];
+
 	sprintf(synchPipeName, "%s%s%s", "\\\\", ServerName, "\\pipe\\synchroPipe");
-	cout << synchPipeName << endl;
+	sprintf(keyboardPipeName, "%s%s%s", "\\\\", ServerName, "\\pipe\\keyboardPipe");
+	
+
 	if(!WaitNamedPipeA(synchPipeName, 1000))
 	{
-		cout << "Pipe waiting error." << GetLastError() << endl;
+		cout << "Pipe waiting error: " << GetLastError() << endl;
 		_getch();
 		return 0;
 	}
-	
 	hNamedPipe = CreateFileA(synchPipeName, GENERIC_READ | GENERIC_WRITE, 0 , NULL, OPEN_EXISTING, 0, NULL);
 	if(hNamedPipe == INVALID_HANDLE_VALUE)
-	{
-		
-		cout << "Pipe creating error." << GetLastError() << endl;
+	{	
+		cout << "Pipe creating error: " << GetLastError() << endl;
 		_getch();
 		return 0;
 	}
 
-	char recvbuf[128];							//
-	int iSendResult;
-	int recvbuflen = 128;						//
+
+	if(!WaitNamedPipeA(keyboardPipeName, 1000))
+	{
+		cout << "Pipe waiting error: " << GetLastError() << endl;
+		_getch();
+		return 0;
+	}
+	hKeyboardPipe = CreateFileA(keyboardPipeName, GENERIC_READ | GENERIC_WRITE, 0 , NULL, OPEN_EXISTING, 0, NULL);
+	if(hKeyboardPipe == INVALID_HANDLE_VALUE)
+	{
+		cout << "Pipe creating error: " << GetLastError() << endl;
+		_getch();
+		return 0;
+	}
+
+
+	char recvbuf[20];							
+	int recvbuflen = 20;						
 
 	HANDLE hThread;
 	DWORD IDThread;
 
+	HANDLE hThreadKeyboard;
+	DWORD IDThreadKeyboard;
+
 	hThread = CreateThread(NULL, NULL, ThreadSendImageFunction, (void*)ConnectSocket, 0, &IDThread);
+
+	hThreadKeyboard = CreateThread(NULL, NULL, ThreadGetKeysFunction, NULL, 0, &IDThreadKeyboard);
 
 	do 
 	{
@@ -146,10 +171,10 @@ int main()
 	
 	} 
 	while (iResult > 0);
-	//freeaddrinfo(result);
-	//WSACleanup();
-	//remove("TempImageClient.bmp");
-	//remove("TempImageClient.jpeg");
+
+	WSACleanup();
+	remove("TempImageClient.bmp");
+	remove("TempImageClient.jpeg");
 	TerminateThread(hThread, NO_ERROR);
 	CloseHandle(hNamedPipe);
 	cout << "end of all";
@@ -160,60 +185,66 @@ int main()
 void StringToCursorPos(char* recvbuf)
 {
 	int mouseAction = 0;
-	//HWND hwnd;
+	char sign;
+	int delta;
+	
 	POINT pt;
 	pt.x = 0;
 	pt.y = 0;
 
 	int i = 0;
-	while(recvbuf[i] != '_')
+	while(recvbuf[i] != '_')				// x
 	{
 		pt.x *= 10;
 		pt.x += recvbuf[i++] - '0';
 	}
 	i++;
-	while(recvbuf[i] != '_')
+	while(recvbuf[i] != '_')				//y
 	{
 		pt.y *= 10;
 		pt.y += recvbuf[i++] - '0';
 	}
 	i++;
-	while(recvbuf[i] != '\0')
+	while(recvbuf[i] != '_')				//mouseAction
 	{
 		mouseAction *= 10;
 		mouseAction += recvbuf[i++] - '0';
 	}
 	SetCursorPos(pt.x, pt.y);
-
-	
-	//hwnd = WindowFromPoint(pt);
+	i++;
+	sign = recvbuf[i++];					//sign
+	delta = recvbuf[i];						//delta
+					
 	switch(mouseAction)
 	{
 	case WM_MOUSEMOVE:
 		break;
 	case WM_LBUTTONDOWN:	
-		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTDOWN, pt.x, pt.y, 0, 0); // нажали
-		cout << "left_down" << endl;
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTDOWN, pt.x, pt.y, 0, 0);
 		break;
 	case WM_LBUTTONUP:	
-		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTUP, pt.x, pt.y, 0, 0); //отпустили
-		cout << "left_up" << endl;
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_LEFTUP, pt.x, pt.y, 0, 0);
 		break;
 	case WM_RBUTTONDOWN:
-		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTDOWN, pt.x, pt.y, 0, 0); // нажали
-		cout << "right_down" << endl;
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTDOWN, pt.x, pt.y, 0, 0);
 		break;
 	case WM_RBUTTONUP:
-		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0); //отпустили
-		cout << "right_up" << endl;
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0);
 		break;
 	case WM_MBUTTONDOWN:
-		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0); //отпустили
-		cout << "Middle button down!" << endl;
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0);
 		break;
 	case WM_MBUTTONUP:
-		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0); //отпустили
-		cout << "Middle button up!" << endl;
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_RIGHTUP, pt.x, pt.y, 0, 0);
+	case WM_MOUSEWHEEL:
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_WHEEL, pt.x, pt.y, 
+				(sign == '+') ? WHEEL_DELTA * delta : -WHEEL_DELTA * delta, 0);
+		break;
+	case WM_MOUSEHWHEEL:
+		mouse_event(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_HWHEEL, pt.x, pt.y, 
+				(sign == '+') ? WHEEL_DELTA * delta : -WHEEL_DELTA * delta, 0);
+		break;
+	default:
 		break;
 
 	}
@@ -237,41 +268,60 @@ DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters)
 			closesocket((SOCKET)lpParameters);
 			WSACleanup();
 			_getch();
+			remove("TempImageServer.bmp");
+			remove("TempImageServer.jpeg");
 			return 0;
 		}
-	static int counter = 0;																	//////тест скорости
+
+	int sizeOfPreviousFile = 0;
 	do 
 	{
-		counter++;																			//////тест скорости
 		//lpParameters contain  ConnectSocket
 		
 		char* bufferForImage = NULL;
-		char* bufferForSize = NULL;
-		unsigned int sizeOfFile = 0;
-		unsigned int numberOfbytes = 0;
-
+		char bufferForSize[10] = {'\0'};
+		int sizeOfFile = 0;
 		
-		GetScreenShot();
-
+		int numberOfbytes = 0;
 		char bufferSynch[1];
 		DWORD numberOfReadBytes = 0;
 		bufferSynch[0] = '\0';
+		HANDLE hFileImageC = NULL;
 
-		HANDLE hFileImageC = CreateFile(L"TempImageClient.jpeg", GENERIC_READ, 0,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_TEMPORARY, NULL);
+		do
+		{
+			CloseHandle(hFileImageC);
 
-		sizeOfFile = GetFileSize(hFileImageC, NULL); 
+			GetScreenShot();
+			
+			hFileImageC = CreateFile(L"TempImageClient.jpeg", GENERIC_READ, 0,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			while(hFileImageC == INVALID_HANDLE_VALUE)
+				hFileImageC = CreateFile(L"TempImageClient.jpeg", GENERIC_READ, 0,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		
+			sizeOfFile = GetFileSize(hFileImageC, NULL); 
+			if(sizeOfFile == INVALID_FILE_SIZE)
+			{
+				cout << "GetFileSize() failed. Error: " << GetLastError() << endl;
+				_getch();
+				return 0;
+			}
+		}
+		while(sizeOfFile == sizeOfPreviousFile);
 
-		bufferForSize = new char[10];
+		/*int i = 0;
+		while(i < 10)
+			bufferForSize[i++] = NULL;*/
 		itoa(sizeOfFile, bufferForSize, 10);
 
 		numberOfReadBytes = 0;
 		bufferSynch[0] = '\0';
+
 		do{
-		ReadFile(hNamedPipe, bufferSynch, 1, &numberOfReadBytes, NULL);
+			ReadFile(hNamedPipe, bufferSynch, 1, &numberOfReadBytes, NULL);
 		}while(numberOfReadBytes == 0);
+
 		iSendResult = send((SOCKET)lpParameters, bufferForSize, strlen(bufferForSize), 0);
 		
-
 		bufferForImage = new char[sizeOfFile];  
 		//передача сначала размера изображения, потом самого изображения
 
@@ -280,24 +330,66 @@ DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters)
 		numberOfReadBytes = 0;
 		bufferSynch[0] = '\0';
 		do{
-		ReadFile(hNamedPipe, bufferSynch, 1, &numberOfReadBytes, NULL);
+			ReadFile(hNamedPipe, bufferSynch, 1, &numberOfReadBytes, NULL);
 		}while(numberOfReadBytes == 0);
+
 		iSendResult = send((SOCKET)lpParameters, bufferForImage, sizeOfFile, 0);
 
-		cout << counter <<" send: " << iSendResult << endl;													//////тест скорости
 		if (iSendResult == SOCKET_ERROR)
 		{
 			cout << "Send failed: " << WSAGetLastError() << endl;
 			closesocket((SOCKET)lpParameters);
 			WSACleanup();
 			_getch();
+			remove("TempImageClient.bmp");
+			remove("TempImageClient.jpeg");
 			return 0;
 		}
 		free(bufferForImage);
-		free(bufferForSize);
 		CloseHandle(hFileImageC);
-		//remove("TempImageClient.bmp");
-		//remove("TempImageClient.jpeg");
+		sizeOfPreviousFile = sizeOfFile;
 	} 
 	while (1);
+}
+
+DWORD WINAPI ThreadGetKeysFunction (LPVOID lpParameters)
+{
+	do
+	{
+		int WM_choice = 0;
+		int VK_choice = 0;
+		char readBuf[10];
+		DWORD numberOfReadBytes;
+		do
+		{
+			ReadFile(hKeyboardPipe, readBuf, 10, &numberOfReadBytes, NULL);
+		}
+		while(numberOfReadBytes == 0);
+
+		int i = 0;
+		while(readBuf[i] != '_')				// x
+		{
+			WM_choice *= 10;
+			WM_choice += readBuf[i++] - '0';
+		}
+		i++;
+		while(readBuf[i] != '_')				// y
+		{
+			VK_choice *= 10;
+			VK_choice += readBuf[i++] - '0';
+		}
+
+		switch (WM_choice)
+		{
+			case WM_KEYDOWN:
+				keybd_event(VK_choice, NULL, NULL, NULL);
+				break;
+			case WM_KEYUP:
+				keybd_event(VK_choice, NULL, KEYEVENTF_KEYUP, NULL);
+				break;
+			default:
+				break;
+		}
+	}
+	while(1);
 }

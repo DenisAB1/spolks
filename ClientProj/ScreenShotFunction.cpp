@@ -6,7 +6,6 @@ using namespace Gdiplus;
  
 int CaptureBMP(LPCTSTR szFile)
 {
-    // Source[1]
     HDC hdcScr, hdcMem;
     HBITMAP hbmScr;
     static BITMAP bmp;
@@ -29,13 +28,9 @@ int CaptureBMP(LPCTSTR szFile)
     // Select the bitmaps into the compatible DC.
     if (!SelectObject(hdcMem, hbmScr)) return 0;
  
-    // Copy color data for the entire display into a
+    // Copy color data for the entire display into a			//iXRes*0.7, iYRes*0.7
     // bitmap that is selected into a compatible DC.
-    if (!StretchBlt(hdcMem,
-        0, 0, iXRes, iYRes,
-        hdcScr,
-        0, 0, iXRes, iYRes,
-        SRCCOPY))
+    if (!StretchBlt(hdcMem, 0, 0, iXRes, iYRes, hdcScr, 0, 0, iXRes, iYRes, SRCCOPY))
  
         return 0;
  
@@ -118,7 +113,7 @@ int CaptureBMP(LPCTSTR szFile)
                     (DWORD) 0,
                     NULL,
                     CREATE_ALWAYS,
-                    FILE_ATTRIBUTE_TEMPORARY,
+					FILE_ATTRIBUTE_NORMAL,
                     (HANDLE) NULL);
     if (hf == INVALID_HANDLE_VALUE) return 0;
  
