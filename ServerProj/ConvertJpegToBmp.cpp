@@ -3,9 +3,8 @@
 #include <olectl.h>
 #include <conio.h>
 LPDISPATCH pImage;
-void LoadSaveImg(HANDLE hFile,char outName[MAX_PATH]) 
+bool LoadSaveImg(HANDLE hFile,char outName[MAX_PATH]) 
 { 
-	//HANDLE hFile = CreateFile(pszFileName, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_TEMPORARY, NULL);
 	SetFilePointer(hFile, 0, NULL, FILE_BEGIN);
 
 	DWORD dwFileSize = GetFileSize(hFile, NULL);
@@ -13,7 +12,7 @@ void LoadSaveImg(HANDLE hFile,char outName[MAX_PATH])
 	{
 		std::cout << "GetFileSize() failed. Error: " << GetLastError() << std::endl;
 		_getch();
-		return;
+		return false;
 	}
 	HGLOBAL hGlobalA = GlobalAlloc(GMEM_MOVEABLE, dwFileSize); 
 	LPVOID pvData = GlobalLock(hGlobalA);
@@ -21,9 +20,6 @@ void LoadSaveImg(HANDLE hFile,char outName[MAX_PATH])
 	BOOL bReadFile = ReadFile(hFile, pvData, dwFileSize, &dwBytesRead, NULL); 
 	GlobalUnlock(hGlobalA); 
 
-
-
-	//CloseHandle(hFile); 
 
 	LPSTREAM pst = NULL; 
 	HRESULT hr = CreateStreamOnHGlobal(hGlobalA, TRUE, &pst); 
@@ -36,12 +32,14 @@ void LoadSaveImg(HANDLE hFile,char outName[MAX_PATH])
 	OleSavePictureFile(pImage, fBuff);
 
 	GlobalFree(hGlobalA); //add
+	return true;
 }
 
-int ConvertToBMP(HANDLE hFile)
+bool ConvertToBMP(HANDLE hFile)
 {
 	static char fNamOut[] = "TempImageServer.bmp";    
 
-	LoadSaveImg(hFile, fNamOut);
-	return 0;
+	if(!LoadSaveImg(hFile, fNamOut))
+		return false;
+	return true;
 }

@@ -8,7 +8,6 @@ HANDLE hEventNextUpdateW = OpenEvent(EVENT_ALL_ACCESS, NULL, L"EventNextUpdate")
 
 HWND CreateNewWindow(int ResolutionScreenClientX, int ResolutionScreenClientY)
 {
-	//что-то для установки нужного размера экрана и нахождения коэффициента
 	ResWindowX = ResolutionScreenClientX;
 	ResWindowY = ResolutionScreenClientY;
 
@@ -16,7 +15,6 @@ HWND CreateNewWindow(int ResolutionScreenClientX, int ResolutionScreenClientY)
 
 	HINSTANCE hInstance = GetModuleHandle(NULL); // получение HINSTANCE приложения
     HWND hwnd;
-    MSG msg;
     WNDCLASSEX wincl;
  
     wincl.hInstance = hInstance;							/*				*/
@@ -37,21 +35,8 @@ HWND CreateNewWindow(int ResolutionScreenClientX, int ResolutionScreenClientY)
 	if (!RegisterClassEx (&wincl))							// регистрация класса для создания окна
         return NULL;
 
-	hwnd = CreateWindowEx (								// создаем окно, но не показываем
-           WS_EX_TRANSPARENT,
-           szClassName,
-           L"RemoteComputer",
-		   WS_POPUP,
-           0,
-           0,
-           ResWindowX,
-           ResWindowY,
-           HWND_DESKTOP,		//
-           NULL,
-           hInstance,
-           NULL
-           );
-	//SetPriorityClass(hwnd, REALTIME_PRIORITY_CLASS);
+	hwnd = CreateWindowEx (WS_EX_TRANSPARENT, szClassName, L"RemoteComputer", WS_POPUP,
+           0, 0, ResWindowX, ResWindowY, HWND_DESKTOP, NULL, hInstance, NULL);
 
 	ShowWindow (hwnd, 1);
 
@@ -60,25 +45,18 @@ HWND CreateNewWindow(int ResolutionScreenClientX, int ResolutionScreenClientY)
 
 LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-        static HBITMAP hImage;
-		static BITMAP bm;
+    static HBITMAP hImage;
+	static BITMAP bm;
         
-        HDC hPaintDC, hMemDC;
-        PAINTSTRUCT ps;
-        HGDIOBJ hOld;		// дескриптор графического объекта
+    HDC hPaintDC, hMemDC;
+    PAINTSTRUCT ps;
+    HGDIOBJ hOld;		// дескриптор графического объекта
         
     switch (message)
-    {
-		//case WM_CREATE:
-			//break;
-			
+    {			
         case WM_PAINT: 
 			
             hImage = (HBITMAP)LoadImage(NULL,L"TempImageServer.bmp", IMAGE_BITMAP,ResWindowX,ResWindowY,LR_LOADFROMFILE); // сделать под любой размер
-
-			//LoadImageW(NULL,L"C:\\2.bmp",IMAGE_BITMAP,0,0,LR_LOADFROMFILE);
-			//InvalidateRect(hwnd,0,0);
-			//SendMessage(hwnd,STM_SETIMAGE,(WPARAM)IMAGE_BITMAP,(LPARAM) hImage);
 			
 			GetObject(hImage,sizeof(BITMAP),&bm);
 
@@ -87,7 +65,6 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             hMemDC = CreateCompatibleDC (hPaintDC);
             hOld = SelectObject (hMemDC, hImage);
              
-			//StretchBlt(hMemDC, 0, 0, iXRes*2, iYRes*2, hdcScr, 0, 0, iXRes, iYRes, SRCCOPY);
             BitBlt (hPaintDC, 0, 0, bm.bmWidth, bm.bmHeight, hMemDC, 0, 0, SRCCOPY);// после этого появляется изображение
              
             SelectObject (hMemDC, hOld);
@@ -104,7 +81,6 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             PostQuitMessage (0);
             break;
         default:
-			//break;
             return DefWindowProc (hwnd, message, wParam, lParam);
     }
     return 0;

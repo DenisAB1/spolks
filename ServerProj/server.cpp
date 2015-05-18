@@ -316,7 +316,6 @@ void SendToClient(int x, int y, int mouseButton, char c, int delta)
 		return;
 	}
 	SetEvent(hEventMouse);
-	
 }
 
 DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
@@ -362,6 +361,7 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 	hWndImage = CreateNewWindow(ResolutionScreenClientX, ResolutionScreenClientY);
 
 	// получаем изображение
+	HANDLE hFileImage;
 	do 
 	{
 		char* bufferForImage = NULL;
@@ -384,7 +384,6 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 		else if (iResult == 0)
 		{
 			cout << "Connection closed. Size of image not recieved." << endl;
-
 			_getch();
 			return 0;
 		}
@@ -419,16 +418,19 @@ DWORD WINAPI ThreadRecvImageFunction (LPVOID lpParameters)
 			_getch();
 			return 0;
 		}
-
-		HANDLE hFileImage = CreateFile(L"TempImageServer.jpeg", GENERIC_READ | GENERIC_WRITE, 0,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, NULL);
-		if(hFileImage == INVALID_HANDLE_VALUE)
+		do
 		{
-			cout << "CreateFile() failed. Error: "<< GetLastError() << endl;
+			hFileImage = CreateFile(L"TempImageServer.jpeg", GENERIC_READ | GENERIC_WRITE, 0,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		}
+		while(hFileImage == INVALID_HANDLE_VALUE);
 
 		WriteFile(hFileImage, bufferForImage, sizeOfFile, &numberOfWrittenBytes, NULL);	
 
-		ConvertToBMP(hFileImage);		
+		if(!ConvertToBMP(hFileImage))
+		{
+			free(bufferForImage);
+			continue;
+		}
 
 		free(bufferForImage);
 

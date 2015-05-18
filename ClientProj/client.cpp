@@ -19,7 +19,7 @@ SOCKET ConnectSocket;
 HANDLE hNamedPipe;
 HANDLE hKeyboardPipe;
 
-void StringToCursorPos(char* recvbuf);
+void DoMouseAction(char* recvbuf);
 DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters);
 DWORD WINAPI ThreadGetKeysFunction (LPVOID lpParameters);
 
@@ -37,7 +37,7 @@ int main()
 	iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
 	if (iResult != 0) 
 	{
-		cout << "WSAStartup failed: " << iResult << endl;
+		cout << "WSAStartup failed. Error: " << iResult << endl;
 		_getch();
 		return 0;
 	}
@@ -155,7 +155,7 @@ int main()
 	{
 		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
 		if (iResult > 0)
-			StringToCursorPos(recvbuf);		//переводит в точку и устанавливает курсор
+			DoMouseAction(recvbuf);		//переводит в точку и устанавливает курсор
 		else if (iResult == 0)
 		{
 			cout << "Connection closed." << endl;
@@ -182,7 +182,7 @@ int main()
 	return 0;
 }
 
-void StringToCursorPos(char* recvbuf)
+void DoMouseAction(char* recvbuf)
 {
 	int mouseAction = 0;
 	char sign;
@@ -213,7 +213,7 @@ void StringToCursorPos(char* recvbuf)
 	SetCursorPos(pt.x, pt.y);
 	i++;
 	sign = recvbuf[i++];					//sign
-	delta = recvbuf[i];						//delta
+	delta = recvbuf[i] - '0';				//delta
 					
 	switch(mouseAction)
 	{
@@ -267,9 +267,10 @@ DWORD WINAPI ThreadSendImageFunction (LPVOID lpParameters)
 			cout << "Send failed: " << WSAGetLastError() << endl;
 			closesocket((SOCKET)lpParameters);
 			WSACleanup();
+			remove("TempImageClient.bmp");
+			remove("TempImageClient.jpeg");
+
 			_getch();
-			remove("TempImageServer.bmp");
-			remove("TempImageServer.jpeg");
 			return 0;
 		}
 

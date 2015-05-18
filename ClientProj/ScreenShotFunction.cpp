@@ -207,6 +207,6 @@ void GetScreenShot()
     stat = image->Save(L"TempImageCLient.jpeg", &encoderClsid, NULL);
  
     delete image;
-   // remove("TempImageCLient.bmp");
+
     GdiplusShutdown(gdiplusToken);
 }
