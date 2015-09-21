@@ -9,6 +9,8 @@
 #include "ConvertJpegToBmp.h"
 #include "window.h"
 
+// щ€ как закомичу
+
 using namespace std;
 
 #define SIZE_OF_NAME_SERVER 20
