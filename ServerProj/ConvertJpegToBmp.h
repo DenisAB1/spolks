@@ -1,1 +1,0 @@
-bool ConvertToBMP(HANDLE hFile);
